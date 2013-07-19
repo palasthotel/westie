@@ -1,0 +1,363 @@
+<?php
+
+function westie_menu() 
+{
+	$items=array();
+	$items['admin/config/westie']=array(
+		'title'=>'West H.W. Terrier',
+		'description'=>t('Configure Westie'),
+		'page callback'=>'drupal_get_form',
+		'page arguments' => array('westie_settings'),
+		'access arguments' => array('administer content'),
+		'type'=>MENU_NORMAL_ITEM,
+	);
+	$items['taxonomy/term/%taxonomy_term/westie']=array(
+		'title'=>t('Override'),
+		'page callback'=>'westie_term_override',
+		'page arguments'=>array(2),
+		'access arguments'=>array(2,'administer content'),
+		'access callback'=>'westie_term_access',
+		'type'=>MENU_LOCAL_TASK,
+		'context'=>MENU_CONTEXT_PAGE|MENU_CONTEXT_INLINE,
+	);
+	$items['westie/autocomplete/nodes']=array(
+		'title'=>t('Autocomplete'),
+		'page callback'=>'westie_autocomplete_node',
+		'access callback'=>'westie_access',
+		'type'=>MENU_CALLBACK,
+	);
+	$items['westie/autocomplete/terms/%']=array(
+		'title'=>t('Autocomplete'),
+		'page callback'=>'westie_autocomplete_term',
+		'page arguments'=>array(3),
+		'access callback'=>'westie_access',
+		'type'=>MENU_CALLBACK,
+	);
+	$items['node/%node/termoverride']=array(
+		'title'=>t('Term override'),
+		'page callback'=>'westie_node_termoverride',
+		'page arguments'=>array(1),
+		'access callback'=>'user_access',
+		'access arguments'=>array('administer content'),
+		'type'=>MENU_LOCAL_TASK,
+		'context'=>MENU_CONTEXT_PAGE|MENU_CONTEXT_INLINE,
+	);
+	return $items;
+}
+
+function westie_access()
+{
+	return TRUE;
+}
+
+function westie_term_access($term,$privilege)
+{
+	if(variable_get('westie_'.$term->vid.'_enabled',0))
+	{
+		return user_access($privilege);
+	}
+	return FALSE;
+}
+
+function westie_autocomplete_node($string='')
+{
+	$return=array();
+	$query=new EntityFieldQuery();
+	$query->entityCondition('entity_type','node')
+		  ->propertyCondition('title','%'.$string.'%','LIKE')
+		  ->propertyOrderBy('created','DESC')
+		  ->range(0,10);
+	$result=$query->execute();
+	
+	if(isset($result['node']))
+	{
+		$nids=array_keys($result['node']);
+		$nodes=entity_load('node',$nids);
+		foreach($nodes as $node)
+		{
+			$return[$node->title." [nid:".$node->nid."]"]=$node->title." [nid:".$node->nid."]";
+		}
+	}
+	drupal_json_output($return);
+}
+
+function westie_autocomplete_term($vid,$string='')
+{
+	$return=array();
+	$query=new EntityFieldQuery();
+	$query->entityCondition('entity_type','taxonomy_term')
+		  ->propertyCondition('vid',$vid)
+		  ->propertyCondition('name','%'.$string.'%','LIKE')
+		  ->range(0,10);
+	$result=$query->execute();
+	if(isset($result['taxonomy_term']))
+	{
+		$tids=array_keys($result['taxonomy_term']);
+		$terms=entity_load('taxonomy_term',$tids);
+		foreach($terms as $term)
+		{
+			$return[$term->name.' [tid:'.$term->tid.']']=$term->name.' [tid:'.$term->tid.']';
+		}
+	}
+	drupal_json_output($return);
+}
+
+
+function westie_term_override($term)
+{
+	return drupal_get_form("westie_override_form",$term->tid);
+}
+
+function westie_node_termoverride($node)
+{
+	return drupal_get_form("westie_node_override_form",$node->nid);
+}
+
+function westie_node_override_form($form_id,&$form_state,$nid)
+{
+	$form=array();
+	$form['basepage']=array(
+		'#type'=>'fieldset',
+		'#title'=>t('Diesen Node als Standard-Übersichtsseite für die folgenden Taxonomien verwenden'),
+	);
+	
+	$vocabularies=taxonomy_get_vocabularies();
+	foreach($vocabularies as $item)
+	{
+		$id=$item->vid;
+		if(variable_get("westie_".$id."_enabled",0)==1)
+		{
+			$title=$item->name;
+			$value=variable_get('westie_'.$id.'_default','');
+			$default_nid = preg_replace("/.*\\[nid:(\\d+)\\]/u", "$1", $value);
+		
+			$entry=array(
+				'#type'=>'checkbox',
+				'#title'=>$title,
+			);
+		
+		
+			if($nid==$default_nid)
+			{
+				$entry['#default_value']=TRUE;
+			}
+			else
+			{
+				$entry['#default_value']=FALSE;
+			}
+			$form['basepage']['westie_'.$id.'_default']=$entry;
+			
+		}
+	}
+	
+	$form['terms']=array(
+		'#type'=>'fieldset',
+		'#title'=>t('Diesen Node als Landingpage für einen bestimmten Term verwenden'),
+	);
+	$query=db_select("westie_nodes")->fields("westie_nodes",array("tid"))->condition("nid",$nid)->execute();
+	$mapping=array();
+	while($entry=$query->fetchAssoc())
+	{
+		$tid=$entry['tid'];
+		$term=taxonomy_term_load($tid);
+		$mapping[$term->vid]=$term;
+	}
+	foreach($vocabularies as $item)
+	{
+		$id=$item->vid;
+		if(variable_get("westie_".$id."_enabled",0)==1)
+		{
+			$title=$item->name;
+			$entry=array(
+				'#type'=>'textfield',
+				'#autocomplete_path'=>'westie/autocomplete/terms/'.$id,
+				'#title'=>$title,
+			);
+			if(isset($mapping[$id]))
+			{
+				$entry['#default_value']=$mapping[$id]->name." [tid:".$mapping[$id]->tid."]";
+			}
+			$form['terms']['westie_'.$id."_termoverride"]=$entry;
+		}
+		
+	}
+	
+	$form['submit']=array(
+		'#type'=>'submit',
+		'#value'=>t('Save'),
+		'#executes_submit_callback'=>TRUE,
+	);
+	$form_state['nid']=$nid;
+	return $form;
+}
+
+function westie_node_override_form_submit($form_id,&$form_state)
+{
+	$nid=$form_state['nid'];
+	$vocabularies=taxonomy_get_vocabularies();
+	foreach($vocabularies as $item)
+	{
+		$id=$item->vid;
+		if(variable_get("westie_".$id."_enabled",0)==1)
+		{
+			if($form_state['values']['westie_'.$id.'_default']==1)
+			{
+				variable_set('westie_'.$id.'_default','TMP [nid:'.$nid.']');
+			}
+			else
+			{
+				$data=variable_get("westie_".$id."_default","");
+				$default_nid= preg_replace("/.*\\[nid:(\\d+)\\]/u", "$1", $data);
+				if($nid==$default_nid)
+				{
+					variable_set("westie_".$id."_default","");
+				}
+				
+			}
+			if($form_state['values']['westie_'.$id.'_termoverride']!='')
+			{
+				//create new entry
+				$tid = preg_replace("/.*\\[tid:(\\d+)\\]/u", "$1", $form_state['values']['westie_'.$id.'_termoverride']);
+				db_delete("westie_nodes")->condition("tid",$tid)->execute();
+				db_insert("westie_nodes")->fields(array("nid"=>$nid,"tid"=>$tid))->execute();
+
+			}
+			else
+			{
+				//delete entries for this vid
+				$query=db_select("westie_nodes")->fields("westie_nodes",array("tid"))->condition("nid",$nid)->execute();
+				while($entry=$query->fetchAssoc())
+				{
+					$term=taxonomy_term_load($entry['tid']);
+					if($term->vid==$id)
+					{
+						db_delete("westie_nodes")->condition("tid",$term->tid)->execute();
+					}
+				}
+			}
+		}
+	}
+}
+
+function westie_override_form($form_id,&$form_state,$tid)
+{
+	$form=array();
+	$form['nid']=array(
+		'#type'=>'textfield',
+		'#title'=>t('Node to use for overriding'),
+		'#autocomplete_path'=>'westie/autocomplete/nodes',
+	);
+	$query=db_select("westie_nodes")->fields("westie_nodes",array("nid"))->condition("tid",$tid)->execute()->fetchAssoc();
+	if(isset($query['nid']))
+	{
+		$node=node_load($query['nid']);
+		$form['nid']['#default_value']=$node->title." [nid:".$node->nid."]";
+	}
+	$form['submit']=array(
+		'#type'=>'submit',
+		'#value'=>t('Save'),
+		'#executes_submit_callback'=>TRUE,
+	);
+	$form_state['tid']=$tid;
+	return $form;
+}
+
+function westie_override_form_submit($form_id,&$form_state)
+{
+	$tid=$form_state['tid'];
+	$nid=$form_state['values']['nid'];
+	$nid = preg_replace("/.*\\[nid:(\\d+)\\]/u", "$1", $nid);
+	$query=db_select("westie_nodes")->fields("westie_nodes",array("nid"))->condition("tid",$tid)->execute()->fetchAssoc();
+	if(isset($query['nid']) && $form_state['values']['nid']=='')
+	{
+		db_delete("westie_nodes")->condition("tid",$tid)->execute();
+	}
+	else if(isset($query['nid']))
+	{
+		db_update("westie_nodes")->fields(array("nid"=>$nid))->condition("tid",$tid)->execute();
+	}
+	else if(!isset($query['nid']))
+	{
+		db_insert("westie_nodes")->fields(array("nid","tid"))->values(array('nid'=>$nid,'tid'=>$form_state['tid']))->execute();
+	}
+}
+
+
+function westie_menu_alter(&$menu) 
+{
+	if(isset($menu['taxonomy/term/%taxonomy_term']))
+	{
+		$menu['taxonomy/term/%taxonomy_term']['page callback'] = 'westie_term_page';
+	}
+}
+
+function westie_term_page($term) 
+{
+	$nodes=taxonomy_select_nodes($term->tid);
+	if(count($nodes)==0)
+	{
+		drupal_not_found();
+		return;
+	}
+	if(variable_get('westie_'.$term->vid.'_enabled',0))
+	{
+//		$grid_id=db_select("grid_nodes")->fields("grid_nodes",array("grid_id"))->condition("nid",$nodeid)->execute()->fetchAssoc();
+		$query=db_select("westie_nodes")->fields("westie_nodes",array("nid"))->condition("tid",$term->tid)->execute()->fetchAssoc();
+		if(isset($query['nid']))
+		{
+			global $westie_current_term;
+			
+			$westie_current_term=$term;
+			$node=node_load($query['nid']);
+			return node_view($node,'full');
+		}
+		else if(variable_get('westie_'.$term->vid."_default","")!="")
+		{
+			$string=variable_get("westie_".$term->vid."_default","");
+			$string = preg_replace("/.*\\[nid:(\\d+)\\]/u", "$1", $string);
+			$node=node_load($string);
+			return node_view($node,"full");
+		}
+		else
+		{
+			return taxonomy_term_page($term);
+		}
+	}
+	else
+	{
+		return taxonomy_term_page($term);
+	}
+}
+
+function westie_get_term()
+{
+	global $westie_current_term;
+	return $westie_current_term;
+}
+
+function westie_settings()
+{
+	$form=array();
+	$vocabularies=taxonomy_get_vocabularies();
+	foreach($vocabularies as $item)
+	{
+		$id=$item->vid;
+		$value=$item->name;
+		$form['westie_'.$id.'_group']=array(
+			'#type'=>'fieldset',
+			'#title'=>$item->name,
+		);
+		$form['westie_'.$id.'_group']['westie_'.$id.'_enabled']=array(
+			'#type'=>'checkbox',
+			'#default_value'=>variable_get('westie_'.$id.'_enabled',0),
+			'#title'=>'Override Terms in '.$value,
+		);
+		$form['westie_'.$id.'_group']['westie_'.$id.'_default']=array(
+			'#type'=>'textfield',
+			'#autocomplete_path'=>'westie/autocomplete/nodes',
+			'#default_value'=>variable_get('westie_'.$id.'_default',''),
+			'#title'=>'Default Node',
+		);
+	}
+	return system_settings_form($form);
+}

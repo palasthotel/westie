@@ -1,0 +1,28 @@
+<?php
+
+function westie_schema()
+{
+	return array(
+		'westie_nodes'=>array(
+			'description'=>t('references nodes based on term ids.'),
+			'fields'=>array(
+				'tid'=>array(
+					'description'=>t('term id'),
+					'type'=>'int',
+					'size'=>'normal',
+					'not null'=>true,
+					'unsigned'=>true,
+				),
+				'nid'=>array(
+					'description'=>t('node id'),
+					'type'=>'int',
+					'size'=>'normal',
+					'not null'=>true,
+					'unsigned'=>true,
+				),
+			),
+			'primary key'=>array('tid'),
+			'mysql_engine'=>'InnoDB',
+		),
+	);
+}

@@ -1,0 +1,5 @@
+name = West Highland White Terrier
+description = Override Term pages and outputs nodes
+package = Palasthotel
+
+core = 7.x
