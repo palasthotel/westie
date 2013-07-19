@@ -282,12 +282,20 @@ function westie_override_form_submit($form_id,&$form_state)
 	}
 }
 
-
 function westie_menu_alter(&$menu) 
 {
 	if(isset($menu['taxonomy/term/%taxonomy_term']))
 	{
 		$menu['taxonomy/term/%taxonomy_term']['page callback'] = 'westie_term_page';
+	}
+}
+
+function westie_module_implements_alter(&$module_list, $context)
+{
+	if($context==="menu_alter"){
+		$temp=$module_list['westie'];
+		unset($module_list['westie']);
+		$module_list['westie']=$temp;
 	}
 }
 
