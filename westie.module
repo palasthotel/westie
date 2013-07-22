@@ -301,6 +301,7 @@ function westie_module_implements_alter(&$module_list, $context)
 
 function westie_term_page($term) 
 {
+	module_load_include('inc', 'taxonomy', 'taxonomy.pages');
 	$nodes=taxonomy_select_nodes($term->tid);
 	if(count($nodes)==0)
 	{
