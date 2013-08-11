@@ -322,6 +322,9 @@ function westie_term_page($term)
 		}
 		else if(variable_get('westie_'.$term->vid."_default","")!="")
 		{
+			global $westie_current_term;
+			
+			$westie_current_term=$term;
 			$string=variable_get("westie_".$term->vid."_default","");
 			$string = preg_replace("/.*\\[nid:(\\d+)\\]/u", "$1", $string);
 			$node=node_load($string);
