@@ -343,6 +343,15 @@ function westie_term_page($term)
 			$string=variable_get("westie_".$term->vid."_default","");
 			$string = preg_replace("/.*\\[nid:(\\d+)\\]/u", "$1", $string);
 			$node=node_load($string);
+			// ben_ added Mulitlanguage Support here
+			$node = node_load($query['nid']);
+			$nodes = translation_node_get_translations($node->tnid);
+			global $language;
+			$lang = $language->language;	
+			if(isset($nodes[$lang])){
+				$node = node_load($nodes[$lang]->nid);
+			}
+			// ben_ finished working here 
 			return node_view($node,"full");
 		}
 		else
