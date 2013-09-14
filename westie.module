@@ -397,3 +397,21 @@ function westie_settings()
 	}
 	return system_settings_form($form);
 }
+
+function westie_get_nodeid_by_termid($tid){
+	$query=db_select("westie_nodes")->fields("westie_nodes",array("nid"))->condition("tid",$tid)->execute()->fetchAssoc();
+	if(isset($query['nid'])){
+		return $query['nid'];
+	}else{
+		return false;
+	}
+}
+
+function westie_get_termid_by_nodeid($tid){
+	$query=db_select("westie_nodes")->fields("westie_nodes",array("tid"))->condition("nid",$nid)->execute()->fetchAssoc();
+	if(isset($query['tid'])){
+		return $query['tid'];
+	}else{
+		return false;
+	}
+}
