@@ -340,7 +340,7 @@ function westie_term_page($term)
 			}
 			// ben_ finished working here
 			
-			return node_view($node,'full');
+			
 		}
 		else if(variable_get('westie_'.$term->vid."_default","")!="")
 		{
@@ -352,14 +352,21 @@ function westie_term_page($term)
 			$node=node_load($string);
 			// ben_ added Mulitlanguage Support here
 			$node = node_load($query['nid']);
+			global $language;			
+			
 			$nodes = translation_node_get_translations($node->tnid);
-			global $language;
-			$lang = $language->language;	
-			if(isset($nodes[$lang])){
+			$lang = $language->language;
+			
+			if($node->language == $language->language){
+				return node_view($node,'full');
+			}elseif(isset($nodes[$lang])){
 				$node = node_load($nodes[$lang]->nid);
+				return node_view($node,'full');
+			}else{
+				return taxonomy_term_page($term);
 			}
-			// ben_ finished working here 
-			return node_view($node,"full");
+			// ben_ finished working here
+			
 		}
 		else
 		{
