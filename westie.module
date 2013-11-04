@@ -15,7 +15,7 @@ function westie_menu()
 		'title'=>t('Override'),
 		'page callback'=>'westie_term_override',
 		'page arguments'=>array(2),
-		'access arguments'=>array(2,'administer content'),
+		'access arguments'=>array(2,'administer nodes'),
 		'access callback'=>'westie_term_access',
 		'type'=>MENU_LOCAL_TASK,
 		'context'=>MENU_CONTEXT_PAGE|MENU_CONTEXT_INLINE,
