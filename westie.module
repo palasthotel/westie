@@ -1,6 +1,6 @@
 <?php
 
-function westie_menu() 
+function westie_menu()
 {
 	$items=array();
 	$items['admin/config/westie']=array(
@@ -8,6 +8,13 @@ function westie_menu()
 		'description'=>t('Configure Westie'),
 		'page callback'=>'drupal_get_form',
 		'page arguments' => array('westie_settings'),
+		'access arguments' => array('administer content'),
+		'type'=>MENU_NORMAL_ITEM,
+	);
+	$items['admin/structure/westie']=array(
+		'title'=>'Overrides Overview',
+		'description'=>t('Show Overrides Overview'),
+		'page callback'=>'westie_override_overwiev',
 		'access arguments' => array('administer content'),
 		'type'=>MENU_NORMAL_ITEM,
 	);
@@ -68,7 +75,7 @@ function westie_autocomplete_node($string='')
 		  ->propertyOrderBy('created','DESC')
 		  ->range(0,10);
 	$result=$query->execute();
-	
+
 	if(isset($result['node']))
 	{
 		$nids=array_keys($result['node']);
@@ -118,9 +125,9 @@ function westie_node_override_form($form_id,&$form_state,$nid)
 	$form=array();
 	$form['basepage']=array(
 		'#type'=>'fieldset',
-		'#title'=>t('Diesen Node als Standard-Übersichtsseite für die folgenden Taxonomien verwenden'),
+		'#title'=>t('Use this Node as Override for a certain Term.'),
 	);
-	
+
 	$vocabularies=taxonomy_get_vocabularies();
 	foreach($vocabularies as $item)
 	{
@@ -130,13 +137,13 @@ function westie_node_override_form($form_id,&$form_state,$nid)
 			$title=$item->name;
 			$value=variable_get('westie_'.$id.'_default','');
 			$default_nid = preg_replace("/.*\\[nid:(\\d+)\\]/u", "$1", $value);
-		
+
 			$entry=array(
 				'#type'=>'checkbox',
 				'#title'=>$title,
 			);
-		
-		
+
+
 			if($nid==$default_nid)
 			{
 				$entry['#default_value']=TRUE;
@@ -146,13 +153,13 @@ function westie_node_override_form($form_id,&$form_state,$nid)
 				$entry['#default_value']=FALSE;
 			}
 			$form['basepage']['westie_'.$id.'_default']=$entry;
-			
+
 		}
 	}
-	
+
 	$form['terms']=array(
 		'#type'=>'fieldset',
-		'#title'=>t('Diesen Node als Landingpage für einen bestimmten Term verwenden'),
+		'#title'=>t('Use this Node as Default for every Term one of these Vocabularies'),
 	);
 	$query=db_select("westie_nodes")->fields("westie_nodes",array("tid"))->condition("nid",$nid)->execute();
 	$mapping=array();
@@ -179,9 +186,9 @@ function westie_node_override_form($form_id,&$form_state,$nid)
 			}
 			$form['terms']['westie_'.$id."_termoverride"]=$entry;
 		}
-		
+
 	}
-	
+
 	$form['submit']=array(
 		'#type'=>'submit',
 		'#value'=>t('Save'),
@@ -212,7 +219,7 @@ function westie_node_override_form_submit($form_id,&$form_state)
 				{
 					variable_set("westie_".$id."_default","");
 				}
-				
+
 			}
 			if($form_state['values']['westie_'.$id.'_termoverride']!='')
 			{
@@ -287,7 +294,7 @@ function westie_node_delete($node)
 	db_delete("westie_nodes")->condition("nid",$node->nid)->execute();
 }
 
-function westie_menu_alter(&$menu) 
+function westie_menu_alter(&$menu)
 {
 	if(isset($menu['taxonomy/term/%taxonomy_term']))
 	{
@@ -304,15 +311,17 @@ function westie_module_implements_alter(&$module_list, $context)
 	}
 }
 
-function westie_term_page($term) 
+function westie_term_page($term)
 {
 	module_load_include('inc', 'taxonomy', 'taxonomy.pages');
 	$nodes=taxonomy_select_nodes($term->tid,FALSE);
-	if(count($nodes)==0)
-	{
-		drupal_not_found();
-		return;
-	}
+	// KM is here: always return a landingpage
+	// if(count($nodes)==0)
+	// {
+	// 	drupal_not_found();
+	// 	return;
+	// }
+	// KM was here
 	if(variable_get('westie_'.$term->vid.'_enabled',0))
 	{
 //		$grid_id=db_select("grid_nodes")->fields("grid_nodes",array("grid_id"))->condition("nid",$nodeid)->execute()->fetchAssoc();
@@ -320,13 +329,13 @@ function westie_term_page($term)
 		if(isset($query['nid']))
 		{
 			global $westie_current_term;
-			
+
 			$westie_current_term=$term;
-			
+
 			// ben_ updated Mulitlanguage Support here
 			$node = node_load($query['nid']);
-			global $language;			
-			
+			global $language;
+
 			if(function_exists('translation_node_get_translations')){
 				$nodes = translation_node_get_translations($node->tnid);
 				$lang = $language->language;
@@ -334,46 +343,74 @@ function westie_term_page($term)
 				$nodes = array();
 				$lang = "";
 			}
-			
-			if($node->language == "und"){
-				return node_view($node,'full');
-			}elseif($node->language == $language->language){
-				return node_view($node,'full');
+
+			if($node->language == LANGUAGE_NONE ||
+			   $node->language == $language->language){
+				$tmp = $_GET['q'];
+				$_GET['q']='node/'.$node->nid;
+				$local_tasks = menu_local_tabs();
+				drupal_static("menu_local_tasks",NULL,TRUE);
+				$_GET['q']=$tmp;
+				$data=node_view($node,'full');
+				$data=array('tasks'=>$local_tasks,'node'=>$data);
+				return $data;
 			}elseif(isset($nodes[$lang])){
 				$node = node_load($nodes[$lang]->nid);
-				return node_view($node,'full');
+				$tmp=$_GET['q'];
+				$_GET['q']='node/'.$node->nid;
+				$local_tasks=menu_local_tabs();
+				drupal_static("menu_local_tasks",NULL,TRUE);
+				$_GET['q']=$tmp;
+				$data=node_view($node,'full');
+				$data=array('tasks'=>$local_tasks,'node'=>$data);
+				return $data;
 			}else{
 				return taxonomy_term_page($term);
 			}
 			// ben_ finished working here
-			
-			
+
+
 		}
 		else if(variable_get('westie_'.$term->vid."_default","")!="")
 		{
 			global $westie_current_term;
-			
+
 			$westie_current_term=$term;
 			$string=variable_get("westie_".$term->vid."_default","");
 			$string = preg_replace("/.*\\[nid:(\\d+)\\]/u", "$1", $string);
 			$node=node_load($string);
 			// ben_ added Mulitlanguage Support here
 			$node = node_load($query['nid']);
-			global $language;			
-			
+			global $language;
+
 			$nodes = translation_node_get_translations($node->tnid);
 			$lang = $language->language;
-			
-			if($node->language == $language->language){
-				return node_view($node,'full');
+
+			if($node->language == LANGUAGE_NONE ||
+			   $node->language == $language->language){
+				$tmp=$_GET['q'];
+				$_GET['q']='node/'.$node->nid;
+				$local_tasks=menu_local_tabs();
+				drupal_static("menu_local_tasks",NULL,TRUE);
+				$_GET['q']=$tmp;
+				$data=node_view($node,'full');
+				$data=array('tasks'=>$local_tasks,'node'=>$data);
+				return $data;
 			}elseif(isset($nodes[$lang])){
 				$node = node_load($nodes[$lang]->nid);
-				return node_view($node,'full');
+				$tmp=$_GET['q'];
+				$_GET['q']='node/'.$node->nid;
+				$local_tasks=menu_local_tabs();
+				drupal_static("menu_local_tasks",NULL,TRUE);
+				$_GET['q']=$tmp;
+				$data=node_view($node,'full');
+				$data=array('tasks'=>$local_tasks,'node'=>$data);
+				return $data;
 			}else{
 				return taxonomy_term_page($term);
 			}
 			// ben_ finished working here
-			
+
 		}
 		else
 		{
@@ -417,6 +454,53 @@ function westie_settings()
 		);
 	}
 	return system_settings_form($form);
+}
+
+function westie_override_overwiev(){
+	$output = "";
+	drupal_set_title("Term Override Overview");
+	$output .= "<p>Term Override Overview</p>";
+	$query = db_select("westie_nodes")->fields("westie_nodes",array("tid", "nid"));
+	$result = db_query($query);
+
+	$table = array();
+	$rows = array();
+	foreach($result as $line){
+		$row = array();
+		$cells = array();
+		$term = taxonomy_term_load($line->tid);
+		$node = node_load($line->nid);
+
+		if(isset($term->name))	{
+			$cells[0]['data'] = t($term->vocabulary_machine_name);
+			$cells[1]['data'] = l(t($term->name), "taxonomy/term/".$line->tid);
+		}else{
+			$cells[0]['data'] = '';
+			$cells[1]['data'] = t('Term got lost');
+		}
+		if(isset($node->title)){
+			$cells[2]['data'] = t($node->type);
+			$cells[3]['data'] = l($node->title, "node/".$line->nid);
+		}else{
+			$cells[2]['data'] = '';
+			$cells[3]['data'] = 'Node got lost';
+		}
+
+		$row['data'] = $cells;
+		$rows[] = $row;
+
+	}
+	$table['header'][0]['data'] = t('Vocabulary');
+	$table['header'][1]['data'] = t('Term');
+	$table['header'][2]['data'] = t('Content Type');
+	$table['header'][3]['data'] = t('Title');
+	$table['rows'] = $rows;
+	$table['attributes'] = array();
+	$table['caption'] = '';
+	$table['colgroups'] = array();
+	$table['sticky'] = true;
+	$table['empty'] = t('No Term Overrides created, yet.');
+	return theme_table($table);
 }
 
 function westie_get_nodeid_by_termid($tid){
